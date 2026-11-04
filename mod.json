@@ -385,7 +385,7 @@
 			"type": "bool",
 			"name": "Check for updates",
 			"description": "On game start, check GitHub for a newer version and show a popup on the main menu if there is one. 'Update now' downloads it from the latest GitHub release and installs it; restart the game to use it.",
-			"default": true
+			"default": false
 		},
 		"menu-theme": {
 			"type": "string",
@@ -409,13 +409,13 @@
 				"Six"
 			]
 		},
-		"bind-menu": {
+		"bind-menu-hold": {
 			"type": "keybind",
-			"name": "Key: open menu",
-			"description": "Works inside a level. Change it here or in Geode's keybinds popup.",
+			"name": "Key: open menu (hold 5 s)",
+			"description": "Hold this for 5 seconds inside a level to open the menu. Change it here or in Geode's keybinds popup.",
 			"category": "gameplay",
 			"default": [
-				"Seven"
+				"Ctrl+Shift+Six"
 			]
 		},
 		"bind-export": {

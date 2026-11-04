@@ -737,8 +737,9 @@ namespace {
         // hidden in practice mode (practice runs can't be submitted, and on phones it sat on the
         // checkpoint buttons); always shown in normal mode while the buffer is on
         auto* layer = GameManager::get()->m_playLayer;
-        buf.watermark->setVisible(buf.enabled && !(layer && layer->m_isPracticeMode));
-        buf.watermark->setString(fmt::format("CBF  |  {}", stageText()).c_str());
+        (void)layer;
+        buf.watermark->setVisible(false);  // showcase build: no on-screen watermark
+        buf.watermark->setString("");
     }
 
     void refreshAutoTag() {
@@ -4807,7 +4808,7 @@ class BufferMenu : public geode::Popup {
         { "performance-mode", "Performance mode" },
         { "explain-inputs", "Explain inputs" },
     };
-    static constexpr char const* TABS[] = { "Buffer", "Prediction", "Modes", "Custom", "Tools" };
+    static constexpr char const* TABS[] = { "Buffer", "Prediction", "Modes", "Custom", "Tools", "Profiles" };
 
     struct Theme {
         ccColor3B main, soft, accent, bg;
@@ -5316,6 +5317,141 @@ private:
         button(m_pageMenu, "All settings", menu_selector(BufferMenu::onAllSettings), { x2 + bw2 + 6.f, y }, bw2);
     }
 
+    // ---------- showcase build: settings profiles ----------
+    // Save every switch / number / the stage / per-mode frames into a slot and load it back in
+    // one click, so a showcase setup and a normal setup can be swapped without re-toggling.
+    static constexpr int PROFILE_SLOTS = 4;
+    static constexpr char const* PROF_BOOLS[] = { "smart-prediction", "debug-console", "practice-only", "orb-assume-hit", "orb-try-both", "avoid-moving-objects", "wave-auto-release", "drift-check", "orb-align", "wave-v46", "wave-safety-margin", "show-path", "orb-align-ground", "full-ghost-state", "robot-smart", "robot-auto-release", "auto-click", "level-memory", "auto-release-normal-runs", "spider-smart", "dash-auto-release", "perf-log", "ship-buffer", "orb-timing", "predict-moving-objects", "predict-move-triggers", "no-hitch-searches", "plan-next-click", "robust-saves", "ignore-touching-hazards", "death-log", "explain-inputs", "cbf-sync", "low-latency", "ufo-smart", "more-time-death-spots", "ball-smart", "swing-smart", "training-mode", "per-level-settings", "death-heatmap", "save-ding", "performance-mode", "predict-through-portals", "auto-budget" };
+    static constexpr char const* PROF_INTS[] = { "custom-ticks", "custom-wave-ticks", "ground-horizon", "wave-horizon", "auto-release-window", "wave-spam-gap", "wave-spam-streak", "orb-align-ticks", "ship-max-delay", "cube-late-crash", "ship-spam-gap", "tps" };
+    static constexpr char const* PROF_FLOATS[] = { "sim-budget-ms" };
+    static constexpr char const* PROF_STRINGS[] = { "menu-theme" };
+
+    static std::string profileSlotKey(int slot) {
+        return fmt::format("showcase-profile-{}", slot);
+    }
+
+    static std::string profileName(int slot) {
+        auto v = Mod::get()->getSavedValue<matjson::Value>(profileSlotKey(slot));
+        if (!v.isObject()) {
+            return "";
+        }
+        return v["name"].asString().unwrapOr(fmt::format("Slot {}", slot + 1));
+    }
+
+    void pageProfiles() {
+        heading("Profiles", "Save all your settings to a slot, then load them back in one click.");
+        float y = pageTop() - 42.f;
+        card(y + 13.f, PROFILE_SLOTS * 30.f + 2.f);
+        for (int i = 0; i < PROFILE_SLOTS; ++i) {
+            auto name = profileName(i);
+            bool has = !name.empty();
+            label(m_page, fmt::format("Slot {}", i + 1), 0.52f, m_text, { SIDE + 20.f, y }, { 0.f, 0.5f });
+            label(m_page, has ? name : "empty", 0.42f, has ? m_cyan : m_muted, { SIDE + 70.f, y }, { 0.f, 0.5f })
+                ->limitLabelWidth(W - SIDE - 210.f, 0.42f, 0.2f);
+            button(m_pageMenu, "Save", menu_selector(BufferMenu::onProfileSave), { W - 150.f, y }, 46.f, false, i);
+            button(m_pageMenu, "Load", menu_selector(BufferMenu::onProfileLoad), { W - 98.f, y }, 46.f, has, i);
+            button(m_pageMenu, "Clear", menu_selector(BufferMenu::onProfileClear), { W - 46.f, y }, 40.f, false, i);
+            y -= 30.f;
+        }
+        label(m_page, "Keybinds aren't part of a profile. Slots are kept across restarts.", 0.38f, m_muted, { SIDE + 14.f, 22.f }, { 0.f, 0.5f })
+            ->limitLabelWidth(W - SIDE - 28.f, 0.38f, 0.2f);
+    }
+
+    void onProfileSave(CCObject* sender) {
+        int slot = sender->getTag();
+        auto* mod = Mod::get();
+        auto v = matjson::Value::object();
+        auto old = profileName(slot);
+        v["name"] = old.empty() ? fmt::format("Slot {}", slot + 1) : old;
+        auto bools = matjson::Value::object();
+        for (auto* k : PROF_BOOLS) {
+            bools[k] = mod->getSettingValue<bool>(k);
+        }
+        auto ints = matjson::Value::object();
+        for (auto* k : PROF_INTS) {
+            ints[k] = mod->getSettingValue<int64_t>(k);
+        }
+        auto floats = matjson::Value::object();
+        for (auto* k : PROF_FLOATS) {
+            floats[k] = mod->getSettingValue<double>(k);
+        }
+        auto strs = matjson::Value::object();
+        for (auto* k : PROF_STRINGS) {
+            strs[k] = mod->getSettingValue<std::string>(k);
+        }
+        v["bools"] = bools;
+        v["ints"] = ints;
+        v["floats"] = floats;
+        v["strings"] = strs;
+        v["stage"] = buf.stage;
+        v["per-mode"] = buf.perMode;
+        auto ticks = matjson::Value::array();
+        for (int i = 0; i < 8; ++i) {
+            ticks.push(buf.modeTicks[i]);
+        }
+        v["mode-ticks"] = ticks;
+        mod->setSavedValue(profileSlotKey(slot), v);
+        say("profile: saved slot {}", slot + 1);
+        rebuildPage();
+    }
+
+    void onProfileLoad(CCObject* sender) {
+        int slot = sender->getTag();
+        auto* mod = Mod::get();
+        auto v = mod->getSavedValue<matjson::Value>(profileSlotKey(slot));
+        if (!v.isObject()) {
+            say("profile: slot {} is empty", slot + 1);
+            return;
+        }
+        for (auto* k : PROF_BOOLS) {
+            if (auto r = v["bools"][k].asBool()) {
+                mod->setSettingValue<bool>(k, r.unwrap());
+            }
+        }
+        for (auto* k : PROF_INTS) {
+            if (auto r = v["ints"][k].asInt()) {
+                mod->setSettingValue<int64_t>(k, r.unwrap());
+            }
+        }
+        for (auto* k : PROF_FLOATS) {
+            if (auto r = v["floats"][k].asDouble()) {
+                mod->setSettingValue<double>(k, r.unwrap());
+            }
+        }
+        for (auto* k : PROF_STRINGS) {
+            if (auto r = v["strings"][k].asString()) {
+                mod->setSettingValue<std::string>(k, r.unwrap());
+            }
+        }
+        if (auto r = v["stage"].asInt()) {
+            buf.stage = std::clamp(static_cast<int>(r.unwrap()), 0, STAGE_COUNT - 1);
+            mod->setSavedValue("stage", buf.stage);
+        }
+        buf.perMode = v["per-mode"].asBool().unwrapOr(false);
+        if (v["mode-ticks"].isArray()) {
+            for (int i = 0; i < 8; ++i) {
+                if (auto r = v["mode-ticks"][i].asInt()) {
+                    buf.modeTicks[i] = std::clamp(static_cast<int>(r.unwrap()), 0, MODE_TICKS_MAX);
+                }
+            }
+        }
+        saveModeTicks();
+        resetPending();
+        applyStage();
+        readSettings();
+        refreshWatermark();
+        refreshPanel();
+        say("profile: loaded slot {} -> {}", slot + 1, stageText());
+        rebuildPage();
+    }
+
+    void onProfileClear(CCObject* sender) {
+        int slot = sender->getTag();
+        Mod::get()->setSavedValue(profileSlotKey(slot), matjson::Value(nullptr));
+        say("profile: cleared slot {}", slot + 1);
+        rebuildPage();
+    }
+
     void rebuildPage() {
         if (m_page) {
             m_page->removeFromParent();
@@ -5343,6 +5479,7 @@ private:
             case 2: pageOptions("Modes", "Per game mode helpers and latency.", MODES, std::size(MODES)); break;
             case 3: pageCustom(); break;
             case 4: pageTools(); break;
+            case 5: pageProfiles(); break;
             default: pageBuffer(); break;
         }
         buildTabs();
@@ -5680,7 +5817,7 @@ class $modify(BufEndLevelLayer, EndLevelLayer) {
 // builds the pause menu with its setup inlined, so the customSetup hook alone never ran there;
 // PlayLayer::pauseGame (below) adds it after the pause menu is shown. Never added twice.
 static void addPauseButton(CCNode* pause) {
-    if (!pause || pause->getChildByID("click-before-frames-menu"_spr)) {
+    if (true || !pause || pause->getChildByID("click-before-frames-menu"_spr)) {  // showcase build: no pause button
         return;
     }
     auto* top = CCSprite::create("heart.png"_spr);
@@ -5913,7 +6050,7 @@ class $modify(BufPlayLayer, PlayLayer) {
             return binds.empty() ? std::string("-") : binds.front().toString();
         };
         auto hintText = fmt::format("{} stage  {} menu  {} copy log  {} console  {} path  {} forget", keyName("bind-stage"),
-            keyName("bind-menu"), keyName("bind-export"), keyName("bind-console"), keyName("bind-path"), keyName("bind-forget"));
+            keyName("bind-menu-hold"), keyName("bind-export"), keyName("bind-console"), keyName("bind-path"), keyName("bind-forget"));
         auto* hint = CCLabelBMFont::create(hintText.c_str(), "chatFont.fnt");
         hint->setScale(0.45f);
         hint->setColor({ 160, 190, 255 });
@@ -6421,8 +6558,37 @@ namespace {
     }
 
     void setupKeybinds() {
-        char const* binds[] = { "bind-stage", "bind-menu", "bind-export", "bind-console", "bind-path", "bind-forget" };
+        char const* binds[] = { "bind-stage", "bind-menu-hold", "bind-export", "bind-console", "bind-path", "bind-forget" };
         for (int i = 0; i < 6; ++i) {
+            if (i == 1) {
+                // showcase build: the menu opens only after the key is held for 5 seconds.
+                // Holding a key sends repeat presses; the menu opens on the first one 5 s in.
+                // Letting go (or the combo no longer matching) stops the repeats, so a short
+                // press never opens it.
+                listenForKeybindSettingPresses(binds[i], [](Keybind const&, bool down, bool repeat, double) {
+                    static std::chrono::steady_clock::time_point start;
+                    static bool holding = false;
+                    static bool fired = false;
+                    auto now = std::chrono::steady_clock::now();
+                    if (!down) {
+                        holding = false;
+                        fired = false;
+                        return false;
+                    }
+                    if (!repeat || !holding) {
+                        holding = true;
+                        fired = false;
+                        start = now;
+                        return false;
+                    }
+                    if (!fired && now - start >= std::chrono::seconds(5)) {
+                        fired = true;
+                        keyAction(1);
+                    }
+                    return false;
+                });
+                continue;
+            }
             listenForKeybindSettingPresses(binds[i], [i](Keybind const&, bool down, bool repeat, double) {
                 if (down && !repeat) {
                     keyAction(i);
@@ -6571,7 +6737,7 @@ namespace {
     }
 
     void checkForUpdate() {
-        if (updateChecked || !Mod::get()->getSettingValue<bool>("check-updates")) {
+        if (true || updateChecked || !Mod::get()->getSettingValue<bool>("check-updates")) {  // showcase build: never update
             return;
         }
         updateChecked = true;
@@ -6646,7 +6812,7 @@ class $modify(BufMenuLayer, MenuLayer) {
             return false;
         }
         CBF_STEP("main menu: heart button");
-        auto* top = CCSprite::create("heart.png"_spr);
+        CCSprite* top = nullptr;  // showcase build: no main menu button
         if (!top) {
             geode::log::error("heart.png missing, no menu button");
             return true;
