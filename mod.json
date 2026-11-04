@@ -8,7 +8,7 @@
 	},
 	"version": "v2.99.5",
 	"id": "basu.input-buffer",
-	"name": "Click Before Frames",
+	"name": "Cubs Improved Showcase Helper",
 	"developer": "BASU",
 	"description": "Trajectory-based input buffer: delays early clicks/releases by up to 8+ frames, with orb, pad and portal-aware prediction. github.com/raresdalas1009/-predictive-input-buffer",
 	"settings": {

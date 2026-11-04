@@ -5162,7 +5162,7 @@ private:
         circle(moon, { 11.f, 0.f }, 1.7f, col({ 255, 255, 255 }, 1.f), 12);
         orbit->addChild(moon);
         orbit->runAction(CCRepeatForever::create(CCRotateBy::create(4.f, -360.f)));
-        label(m_mainLayer, "CLICK BEFORE FRAMES", 0.56f, m_text, { 38.f, H - TITLE / 2.f }, { 0.f, 0.5f }, true);
+        label(m_mainLayer, "CUBS SHOWCASE HELPER", 0.56f, m_text, { 38.f, H - TITLE / 2.f }, { 0.f, 0.5f }, true);
         label(m_mainLayer, Mod::get()->getVersion().toVString(), 0.4f, m_muted, { W - 38.f, H - TITLE / 2.f }, { 1.f, 0.5f });
 
         m_frameMenu = CCMenu::create();
