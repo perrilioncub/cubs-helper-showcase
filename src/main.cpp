@@ -16,6 +16,8 @@
 //    dead flipGravity hook priority, optional console, in-game console (stage + live log, hidden by default).
 
 #include <Geode/Geode.hpp>
+#include <Geode/utils/Keyboard.hpp>
+#include <deque>
 #include <Geode/utils/web.hpp>
 #include <Geode/modify/EffectGameObject.hpp>
 #include <Geode/modify/GJBaseGameLayer.hpp>
@@ -45,7 +47,6 @@
 #include <climits>
 #include <cmath>
 #include <complex>
-#include <deque>
 #include <filesystem>
 #include <functional>
 #include <fstream>
@@ -4572,6 +4573,31 @@ namespace {
         refreshPanel();
     }
 
+    // showcase build: panic switch. Pressing Shift 8 times within 3 seconds turns the mod
+    // Off (same as the Off stage). Doing it again puts back the stage you were on.
+    void panicToggle() {
+        int off = STAGE_COUNT - 1;
+        int target;
+        if (buf.stage != off) {
+            Mod::get()->setSavedValue("panic-prev-stage", buf.stage);
+            target = off;
+        }
+        else {
+            target = static_cast<int>(Mod::get()->getSavedValue<int64_t>("panic-prev-stage", 0));
+            target = std::clamp(target, 0, STAGE_COUNT - 1);
+            if (target == off) {
+                target = 0;
+            }
+        }
+        cycleStage(target - buf.stage);
+        if (target == off) {
+            say("Shift x8 -> mod OFF");
+        }
+        else {
+            say("Shift x8 -> mod back ON ({})", stageText());
+        }
+    }
+
     // v2.4 wave auto-release (practice mode only): while you hold in wave, check every
     // tick whether holding crashes within the next `autoWindow` ticks. If it does and
     // letting go now clearly survives longer, let go for you. Your own release later is
@@ -6558,6 +6584,27 @@ namespace {
     }
 
     void setupKeybinds() {
+        // showcase build: Shift pressed 8 times within 3 s -> panicToggle()
+        KeyboardInputEvent().listen([](KeyboardInputData& data) {
+            if (data.action != KeyboardInputData::Action::Press) {
+                return false;
+            }
+            if (data.key != enumKeyCodes::KEY_Shift && data.key != enumKeyCodes::KEY_LeftShift
+                && data.key != enumKeyCodes::KEY_RightShift) {
+                return false;
+            }
+            static std::deque<std::chrono::steady_clock::time_point> presses;
+            auto now = std::chrono::steady_clock::now();
+            presses.push_back(now);
+            while (!presses.empty() && now - presses.front() > std::chrono::seconds(3)) {
+                presses.pop_front();
+            }
+            if (presses.size() >= 8) {
+                presses.clear();
+                panicToggle();
+            }
+            return false;
+        }).leak();
         char const* binds[] = { "bind-stage", "bind-menu-hold", "bind-export", "bind-console", "bind-path", "bind-forget" };
         for (int i = 0; i < 6; ++i) {
             if (i == 1) {
